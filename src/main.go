@@ -2,13 +2,15 @@ package main
 
 import (
   "fmt"
-  "bufio"
   "os"
   "encoding/gob"
   "strings"
   "unicode"
   "errors"
   "flag"
+
+  "github.com/reiver/go-porterstemmer"
+  "github.com/c-bata/go-prompt"
 )
 
 type ConceptType string
@@ -170,7 +172,6 @@ var COMMANDS []Command = []Command{
       MaxRelationId: relationId,
     })
   }},
-
   Command{Name: "read", Callback: func(argv []string) error {
     if len(argv) != 1 {
       return errors.New("Only accepts 1 argument.")
@@ -186,6 +187,15 @@ var COMMANDS []Command = []Command{
     concepts = conceptmap.Concepts
     conceptId = conceptmap.MaxConceptId
     relationId = conceptmap.MaxRelationId
+    return nil
+  }},
+
+  Command{Name: "clear", Callback: func(argv []string) error {
+		fmt.Print("\033[H\033[2J")
+    return nil
+  }},
+  Command{Name: "exit", Callback: func(argv []string) error {
+    os.Exit(0)
     return nil
   }},
 
@@ -214,7 +224,7 @@ var COMMANDS []Command = []Command{
     conceptId += 1
     concept := &Concept{
       Id: conceptId,
-      Name: name,
+      Name: porterstemmer.StemString(name),
       Type: typ,
     }
     concepts = append(concepts, concept)
@@ -245,7 +255,7 @@ var COMMANDS []Command = []Command{
 
   // Define a relationship on a concept that defines how it relates to another concept
   Command{Name: "relate", Callback: func(argv []string) error {
-    if len(argv) < 3 {
+    if len(argv) < 2 {
       return errors.New("relate <concept id> <relation type> <concept1> [concept2] ... [conceptn]")
     }
     
@@ -316,6 +326,35 @@ var COMMANDS []Command = []Command{
     fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
     return nil
   }},
+
+
+  Command{Name: "desc", Callback: func(argv []string) error {
+    phrase := strings.Join(argv, " ")
+    resultConcepts, err := Describe(phrase)
+    if err != nil {
+      return err
+    }
+
+    for _, concept := range resultConcepts {
+      fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
+      for _, relation := range concept.Relations {
+        fmt.Printf(" |-> %s of: ", relation.Kind)
+        for _, conceptId := range relation.Concepts {
+          for _, concept := range concepts {
+            if concept.Id == conceptId {
+              fmt.Printf("%s ", concept.Name)
+            }
+          }
+        }
+        fmt.Printf(" (id=%d)", relation.Id)
+      }
+      if len(concept.Relations) > 0 {
+        fmt.Println()
+      }
+    }
+
+    return nil
+  }},
 }
 
 func RunCommand(command string, argv []string) error {
@@ -325,6 +364,46 @@ func RunCommand(command string, argv []string) error {
     }
   }
   return errors.New(fmt.Sprintf("No command %s found", command))
+}
+
+func completer(d prompt.Document) []prompt.Suggest {
+  NO_SUGGESTIONS := []prompt.Suggest{}
+  // Ensure that a first word has been typed
+  if len(strings.Fields(d.Text)) <= 1 {
+    return NO_SUGGESTIONS
+  }
+
+  fields := strings.Fields(d.Text)
+  command := strings.ToLower(fields[0])
+
+  // Calculate all suggestions for 
+  conceptSuggestions := []prompt.Suggest{
+    // {Text: "comments", Description: "Store the text commented to articles"},
+  }
+  for _, concept := range concepts {
+    conceptSuggestions = append(conceptSuggestions, prompt.Suggest{
+      Text: concept.Name,
+      Description: string(concept.Type),
+    })
+  }
+  
+  switch command {
+  case "relate":
+    if len(fields) == 2 || len(fields) >= 4 {
+      return prompt.FilterHasPrefix(conceptSuggestions, d.GetWordBeforeCursor(), true)
+    } else {
+      return NO_SUGGESTIONS
+    }
+  case "unrelate":
+    return prompt.FilterHasPrefix(conceptSuggestions, d.GetWordBeforeCursor(), true)
+  }
+
+	s := []prompt.Suggest{
+		{Text: "users", Description: "Store the username and age"},
+		{Text: "articles", Description: "Store the article text posted by user"},
+		{Text: "comments", Description: "Store the text commented to articles"},
+	}
+	return prompt.FilterHasPrefix(s, d.GetWordBeforeCursor(), true)
 }
 
 func main() {
@@ -340,10 +419,8 @@ func main() {
     }
   }
 
-  reader := bufio.NewReader(os.Stdin)
   for {
-    fmt.Printf("> ");
-    text, _ := reader.ReadString('\n')
+    text := prompt.Input("> ", completer)
 
     // convert CRLF to LF
     text = strings.Replace(text, "\n", "", -1)
@@ -363,3 +440,29 @@ func main() {
     }
   }
 }
+
+
+/*
+Process:
+1. Split the concept up into subconcepts
+  - Does the concept exist on its own? If so, then the result from this step is `[concept]`
+  - If not, start taking words off of the front to try to form a concept.
+  - After each word is added, try to search for a matching concept.
+  - If all words are added and no concept is found, then throw an error.
+  - Repeat the above process to split the phrase into concepts
+2. For each concept:
+  - Try to describe it in the terms of other concepts
+  - For each relationship within the concept, allow each concept in order to modify an array:
+
+UNION (like synonym, but similar to n concepts combined):
+1. Take all concepts passed as args, run each through this process.
+2. Take union of all items
+3. That becomes the result
+
+EXAMPLE:
+1. Take all concepts passed as args, run each through this process.
+2. Take the intersection of all items
+3. That becomes the result
+
+
+*/
