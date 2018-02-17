@@ -16,4 +16,4 @@ dev:
 	docker run -it \
 		-v `pwd`/src:/go/src/app \
 		-v `pwd`:/pwd \
-		"$(namespace)/$(image):0" sh -c "go build && ./app -db foo.db"
+		"$(namespace)/$(image):0" sh -c "go build && ./app -db training.db"

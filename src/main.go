@@ -34,19 +34,18 @@ var RELATIONS map[string]RelationKind = map[string]RelationKind{
   // The base case, a concept that is defined in code
   "KEYWORD": RelationKind("KEYWORD"),
 
+  // Defining that a concept is exactly the same (maybe adifferent spelling, etc) as another concept
+  "IDENTICAL": RelationKind("IDENTICAL"),
+
   // Defining that a concept is similar to another concept
   "SYNONYM": RelationKind("SYNONYM"),
 
+  // Defining that a concept is the opposite of another concept
+  "ANTONYM": RelationKind("ANTONYM"),
+
   // Defining that a concept is a more general form of another concept (time is a more general form of an epoch)
   "SUPERSET": RelationKind("SUPERSET"),
-
-  "EXAMPLE": RelationKind("EXAMPLE"),
-
-  // Defining that a concept belongs to another concept (a car owns its tires)
-  "POSSESIVE": RelationKind("POSSESIVE"),
-
-  // Defining a concept in terms of multipl other concepts
-  "UNION": RelationKind("UNION"),
+  "SUBSET": RelationKind("SUBSET"),
 }
 
 var relationId int = 0
@@ -65,16 +64,16 @@ type ConceptMap struct {
 var concepts []*Concept = []*Concept{}
 
 
-func selectConcept(selector string) *Concept {
+func SelectConcept(selector string) *Concept {
   for _, concept := range concepts {
-    if concept.Name == selector {
+    if concept.Name == porterstemmer.StemString(selector) {
       return concept
     }
   }
 
   // By default, just look by id.
   for _, concept := range concepts {
-    if fmt.Sprintf("%d", concept.Name) == selector {
+    if fmt.Sprintf("%d", concept.Id) == selector {
       return concept
     }
   }
@@ -216,7 +215,7 @@ var COMMANDS []Command = []Command{
     if len(argv) == 2 {
       name = argv[0]
       var ok bool
-      if typ, ok = CONCEPT_TYPES[argv[1]]; !ok {
+      if typ, ok = CONCEPT_TYPES[strings.ToUpper(argv[1])]; !ok {
         return errors.New(fmt.Sprintf("Type %s does not exist.", typ))
       }
     }
@@ -244,13 +243,42 @@ var COMMANDS []Command = []Command{
             }
           }
         }
-        fmt.Printf(" (id=%d)", relation.Id)
+        fmt.Printf(" (id=%d)\n", relation.Id)
       }
       if len(concept.Relations) > 0 {
         fmt.Println()
       }
     }
     return nil
+  }},
+  Command{Name: "rmc", Callback: func(argv []string) error {
+    if len(argv) == 0 || len(argv) >= 2 {
+      return errors.New("rmc <concept id>")
+    }
+
+    concept := SelectConcept(argv[0])
+    if concept == nil {
+      return errors.New("No such concept found.")
+    }
+    index := -1
+    fmt.Println(concept)
+
+    for ind, c := range concepts {
+      if c.Id == concept.Id {
+        index = ind
+        break
+      }
+    }
+
+    if index >= 0 {
+      fmt.Println(concepts[index:], concepts[:index+1])
+      // concepts = append(concepts[index:], concepts[:index+1]...)
+      concepts = append(concepts[index:], concepts[:index+1]...)
+      fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
+      return nil
+    } else {
+      return errors.New("No such concept found.")
+    }
   }},
 
   // Define a relationship on a concept that defines how it relates to another concept
@@ -260,7 +288,7 @@ var COMMANDS []Command = []Command{
     }
     
     // Find the concept that the relationship is being defined upon
-    concept := selectConcept(argv[0])
+    concept := SelectConcept(argv[0])
     if concept == nil {
       return errors.New(fmt.Sprintf("No such concept found: %d", argv[0]))
     }
@@ -268,7 +296,7 @@ var COMMANDS []Command = []Command{
     // Find all the concepts that are used as arguments to the relationship
     var relationConcepts []int
     for _, conceptSelector := range argv[2:] {
-      concept := selectConcept(conceptSelector)
+      concept := SelectConcept(conceptSelector)
       if concept != nil {
         relationConcepts = append(relationConcepts, concept.Id)
       } else {
@@ -301,7 +329,7 @@ var COMMANDS []Command = []Command{
     }
     
     // Find the concept that the relationship is being defined upon
-    concept := selectConcept(argv[0])
+    concept := SelectConcept(argv[0])
     if concept == nil {
       return errors.New(fmt.Sprintf("No such concept found: %d", argv[0]))
     }
@@ -378,7 +406,6 @@ func completer(d prompt.Document) []prompt.Suggest {
 
   // Calculate all suggestions for 
   conceptSuggestions := []prompt.Suggest{
-    // {Text: "comments", Description: "Store the text commented to articles"},
   }
   for _, concept := range concepts {
     conceptSuggestions = append(conceptSuggestions, prompt.Suggest{
@@ -398,15 +425,15 @@ func completer(d prompt.Document) []prompt.Suggest {
     return prompt.FilterHasPrefix(conceptSuggestions, d.GetWordBeforeCursor(), true)
   }
 
-	s := []prompt.Suggest{
-		{Text: "users", Description: "Store the username and age"},
-		{Text: "articles", Description: "Store the article text posted by user"},
-		{Text: "comments", Description: "Store the text commented to articles"},
-	}
-	return prompt.FilterHasPrefix(s, d.GetWordBeforeCursor(), true)
+	return NO_SUGGESTIONS
 }
 
 func main() {
+  err := TrainConcept("pickle")
+  fmt.Println(err)
+}
+
+func main1() {
   // On start, parse some flags to default actions
   var database = flag.String("db", "", "A path to a database file to READ on start.")
   flag.Parse()

@@ -90,7 +90,7 @@ func Describe(phrase string) ([]*Concept, error) {
     // removing a word from the right side until the phrase matches a known concept.
     for i := len(words); i > 0; i-- {
       potentialPhrase := strings.Join(words[:i], " ")
-      concept := selectConcept(potentialPhrase)
+      concept := SelectConcept(potentialPhrase)
 
       // Was a concept found?
       if concept != nil {
