@@ -4,6 +4,7 @@ import (
   "fmt"
   "net/http"
   "encoding/json"
+  "time"
 )
 
 type WordnickRelationship struct {
@@ -34,7 +35,19 @@ func GetRelatedConcepts(concept string) ([]WordnickRelationship, error) {
 
   resp, err := http.Get(url)
   if err != nil {
-    return nil, err
+    time.Sleep(1 * time.Second)
+
+    // Make the http request again.
+    resp, err = http.Get(url)
+    if err != nil {
+      time.Sleep(5 * time.Second)
+
+      // Try it one last time
+      resp, err = http.Get(url)
+      if err != nil {
+        return nil, err
+      }
+    }
   }
 
   var data []WordnickRelationship
