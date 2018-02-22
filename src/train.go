@@ -61,7 +61,12 @@ func GetRelatedConcepts(concept string) ([]WordnickRelationship, error) {
   return data, nil
 }
 
-func TrainConcept(concept string) error {
+func TrainConcept(concept string, maxdepth int) error {
+  if maxdepth == 0 {
+    fmt.Println("Max depth reached.")
+    return nil
+  }
+
   fmt.Printf("* Training on %s\n", concept)
 
   // If the concept `concept` doesn't exist, create it.
@@ -74,6 +79,7 @@ func TrainConcept(concept string) error {
     baseConcept = SelectConcept(concept)
   }
 
+  time.Sleep(750 * time.Millisecond)
   data, err := GetRelatedConcepts(concept)
   if err != nil {
     return err
@@ -92,7 +98,7 @@ func TrainConcept(concept string) error {
 
         // If the word doesn't exist, train on it first.
         if concept == nil {
-          err := TrainConcept(word)
+          err := TrainConcept(word, maxdepth-1)
           if err != nil {
             return err
           }
