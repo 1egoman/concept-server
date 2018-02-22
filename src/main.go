@@ -156,233 +156,245 @@ type Command struct {
   Name string
   Callback func([]string) error
 }
-var COMMANDS []Command = []Command{
-  // Database state-saving commands
-  Command{Name: "dump", Callback: func(argv []string) error {
-    if len(argv) != 1 {
-      return errors.New("Only accepts 1 argument.")
-    }
-    return dumpConcepts(argv[0], &ConceptMap{
-      Version: "v1",
-      Concepts: concepts,
+var COMMANDS []Command
 
-      // The current max id that we are at with relations and concepts
-      MaxConceptId: conceptId,
-      MaxRelationId: relationId,
-    })
-  }},
-  Command{Name: "read", Callback: func(argv []string) error {
-    if len(argv) != 1 {
-      return errors.New("Only accepts 1 argument.")
-    }
-    fmt.Printf("Loading %s\n", argv[0])
-
-    conceptmap, err := hydrateConcepts(argv[0])
-    if err != nil {
-      return err
-    }
-
-    fmt.Printf("Version %s\n", conceptmap.Version)
-    concepts = conceptmap.Concepts
-    conceptId = conceptmap.MaxConceptId
-    relationId = conceptmap.MaxRelationId
-    return nil
-  }},
-
-  Command{Name: "clear", Callback: func(argv []string) error {
-		fmt.Print("\033[H\033[2J")
-    return nil
-  }},
-  Command{Name: "exit", Callback: func(argv []string) error {
-    os.Exit(0)
-    return nil
-  }},
-
-  // Create new concepts
-  Command{Name: "newc", Callback: func(argv []string) error {
-    var name string
-    var typ ConceptType
-    if len(argv) == 0 {
-      return errors.New("newc <name> [type]")
-    }
-    if len(argv) > 2 {
-      return errors.New("Too many arguments, expected only 1 or 2.")
-    }
-    if len(argv) == 1 {
-      name = argv[0]
-      typ = ""
-    }
-    if len(argv) == 2 {
-      name = argv[0]
-      var ok bool
-      if typ, ok = CONCEPT_TYPES[strings.ToUpper(argv[1])]; !ok {
-        return errors.New(fmt.Sprintf("Type %s does not exist.", typ))
+func init() {
+  COMMANDS = []Command{
+    // Database state-saving commands
+    Command{Name: "dump", Callback: func(argv []string) error {
+      if len(argv) != 1 {
+        return errors.New("Only accepts 1 argument.")
       }
-    }
+      return dumpConcepts(argv[0], &ConceptMap{
+        Version: "v1",
+        Concepts: concepts,
 
-    conceptId += 1
-    concept := &Concept{
-      Id: conceptId,
-      Name: porterstemmer.StemString(name),
-      Type: typ,
-    }
-    concepts = append(concepts, concept)
+        // The current max id that we are at with relations and concepts
+        MaxConceptId: conceptId,
+        MaxRelationId: relationId,
+      })
+    }},
+    Command{Name: "read", Callback: func(argv []string) error {
+      if len(argv) != 1 {
+        return errors.New("Only accepts 1 argument.")
+      }
+      fmt.Printf("Loading %s\n", argv[0])
 
-    fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
-    return nil
-  }},
-  Command{Name: "lsc", Callback: func(argv []string) error {
-    for _, concept := range concepts {
-      fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
-      for _, relation := range concept.Relations {
-        fmt.Printf(" |-> %s of: ", relation.Kind)
-        for _, conceptId := range relation.Concepts {
-          for _, concept := range concepts {
-            if concept.Id == conceptId {
-              fmt.Printf("%s ", concept.Name)
-            }
-          }
+      conceptmap, err := hydrateConcepts(argv[0])
+      if err != nil {
+        return err
+      }
+
+      fmt.Printf("Version %s\n", conceptmap.Version)
+      concepts = conceptmap.Concepts
+      conceptId = conceptmap.MaxConceptId
+      relationId = conceptmap.MaxRelationId
+      return nil
+    }},
+
+    Command{Name: "clear", Callback: func(argv []string) error {
+      fmt.Print("\033[H\033[2J")
+      return nil
+    }},
+    Command{Name: "exit", Callback: func(argv []string) error {
+      os.Exit(0)
+      return nil
+    }},
+
+    // Create new concepts
+    Command{Name: "newc", Callback: func(argv []string) error {
+      var name string
+      var typ ConceptType
+      if len(argv) == 0 {
+        return errors.New("newc <name> [type]")
+      }
+      if len(argv) > 2 {
+        return errors.New("Too many arguments, expected only 1 or 2.")
+      }
+      if len(argv) == 1 {
+        name = argv[0]
+        typ = ""
+      }
+      if len(argv) == 2 {
+        name = argv[0]
+        var ok bool
+        if typ, ok = CONCEPT_TYPES[strings.ToUpper(argv[1])]; !ok {
+          return errors.New(fmt.Sprintf("Type %s does not exist.", typ))
         }
-        fmt.Printf(" (id=%d)\n", relation.Id)
       }
-      if len(concept.Relations) > 0 {
-        fmt.Println()
+
+      conceptId += 1
+      concept := &Concept{
+        Id: conceptId,
+        Name: porterstemmer.StemString(name),
+        Type: typ,
       }
-    }
-    return nil
-  }},
-  Command{Name: "rmc", Callback: func(argv []string) error {
-    if len(argv) == 0 || len(argv) >= 2 {
-      return errors.New("rmc <concept id>")
-    }
+      concepts = append(concepts, concept)
 
-    concept := SelectConcept(argv[0])
-    if concept == nil {
-      return errors.New("No such concept found.")
-    }
-    index := -1
-    fmt.Println(concept)
-
-    for ind, c := range concepts {
-      if c.Id == concept.Id {
-        index = ind
-        break
-      }
-    }
-
-    if index >= 0 {
-      fmt.Println(concepts[index:], concepts[:index+1])
-      // concepts = append(concepts[index:], concepts[:index+1]...)
-      concepts = append(concepts[index:], concepts[:index+1]...)
       fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
       return nil
-    } else {
-      return errors.New("No such concept found.")
-    }
-  }},
-
-  // Define a relationship on a concept that defines how it relates to another concept
-  Command{Name: "relate", Callback: func(argv []string) error {
-    if len(argv) < 2 {
-      return errors.New("relate <concept id> <relation type> <concept1> [concept2] ... [conceptn]")
-    }
-    
-    // Find the concept that the relationship is being defined upon
-    concept := SelectConcept(argv[0])
-    if concept == nil {
-      return errors.New(fmt.Sprintf("No such concept found: %d", argv[0]))
-    }
-
-    // Find all the concepts that are used as arguments to the relationship
-    var relationConcepts []int
-    for _, conceptSelector := range argv[2:] {
-      concept := SelectConcept(conceptSelector)
-      if concept != nil {
-        relationConcepts = append(relationConcepts, concept.Id)
-      } else {
-        return errors.New(fmt.Sprintf("No such concept found: %d", conceptId))
-      }
-    }
-
-    relation := strings.ToUpper(argv[1])
-    if kind, ok := RELATIONS[relation]; ok {
-      relationId += 1
-      relation := &Relation{
-        Id: relationId,
-        Kind: kind,
-        Concepts: relationConcepts,
-      }
-
-      // Add the relation to the concept.
-      concept.Relations = append(concept.Relations, relation)
-    } else {
-      return errors.New(fmt.Sprintf("No such relation: %s", relation))
-    }
-
-
-    fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
-    return nil
-  }},
-  Command{Name: "unrelate", Callback: func(argv []string) error {
-    if len(argv) != 2 {
-      return errors.New("unrelate <concept id> <relation id>")
-    }
-    
-    // Find the concept that the relationship is being defined upon
-    concept := SelectConcept(argv[0])
-    if concept == nil {
-      return errors.New(fmt.Sprintf("No such concept found: %d", argv[0]))
-    }
-
-    // Find the relationship to modify on a concept
-    var relationIndex int = -1
-    for i, r := range concept.Relations {
-      if fmt.Sprintf("%d", r.Id) == argv[1] {
-        relationIndex = i
-        break
-      }
-    }
-    if relationIndex == -1 {
-      return errors.New(fmt.Sprintf("No such relation found in concept %d: %d", argv[0], argv[1]))
-    }
-
-    concept.Relations = append(
-      concept.Relations[:relationIndex],
-      concept.Relations[relationIndex+1:]...
-    )
-
-    fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
-    return nil
-  }},
-
-
-  Command{Name: "desc", Callback: func(argv []string) error {
-    phrase := strings.Join(argv, " ")
-    resultConcepts, err := Describe(phrase)
-    if err != nil {
-      return err
-    }
-
-    for _, concept := range resultConcepts {
-      fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
-      for _, relation := range concept.Relations {
-        fmt.Printf(" |-> %s of: ", relation.Kind)
-        for _, conceptId := range relation.Concepts {
-          for _, concept := range concepts {
-            if concept.Id == conceptId {
-              fmt.Printf("%s ", concept.Name)
+    }},
+    Command{Name: "lsc", Callback: func(argv []string) error {
+      for _, concept := range concepts {
+        fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
+        for _, relation := range concept.Relations {
+          fmt.Printf(" |-> %s of: ", relation.Kind)
+          for _, conceptId := range relation.Concepts {
+            for _, concept := range concepts {
+              if concept.Id == conceptId {
+                fmt.Printf("%s ", concept.Name)
+              }
             }
           }
+          fmt.Printf(" (id=%d)\n", relation.Id)
         }
-        fmt.Printf(" (id=%d)", relation.Id)
+        if len(concept.Relations) > 0 {
+          fmt.Println()
+        }
       }
-      if len(concept.Relations) > 0 {
-        fmt.Println()
+      return nil
+    }},
+    Command{Name: "rmc", Callback: func(argv []string) error {
+      if len(argv) == 0 || len(argv) >= 2 {
+        return errors.New("rmc <concept id>")
       }
-    }
 
-    return nil
-  }},
+      concept := SelectConcept(argv[0])
+      if concept == nil {
+        return errors.New("No such concept found.")
+      }
+      index := -1
+      fmt.Println(concept)
+
+      for ind, c := range concepts {
+        if c.Id == concept.Id {
+          index = ind
+          break
+        }
+      }
+
+      if index >= 0 {
+        fmt.Println(concepts[index:], concepts[:index+1])
+        // concepts = append(concepts[index:], concepts[:index+1]...)
+        concepts = append(concepts[index:], concepts[:index+1]...)
+        fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
+        return nil
+      } else {
+        return errors.New("No such concept found.")
+      }
+    }},
+
+    // Define a relationship on a concept that defines how it relates to another concept
+    Command{Name: "relate", Callback: func(argv []string) error {
+      if len(argv) < 2 {
+        return errors.New("relate <concept id> <relation type> <concept1> [concept2] ... [conceptn]")
+      }
+      
+      // Find the concept that the relationship is being defined upon
+      concept := SelectConcept(argv[0])
+      if concept == nil {
+        return errors.New(fmt.Sprintf("No such concept found: %d", argv[0]))
+      }
+
+      // Find all the concepts that are used as arguments to the relationship
+      var relationConcepts []int
+      for _, conceptSelector := range argv[2:] {
+        concept := SelectConcept(conceptSelector)
+        if concept != nil {
+          relationConcepts = append(relationConcepts, concept.Id)
+        } else {
+          return errors.New(fmt.Sprintf("No such concept found: %d", conceptId))
+        }
+      }
+
+      relation := strings.ToUpper(argv[1])
+      if kind, ok := RELATIONS[relation]; ok {
+        relationId += 1
+        relation := &Relation{
+          Id: relationId,
+          Kind: kind,
+          Concepts: relationConcepts,
+        }
+
+        // Add the relation to the concept.
+        concept.Relations = append(concept.Relations, relation)
+      } else {
+        return errors.New(fmt.Sprintf("No such relation: %s", relation))
+      }
+
+
+      fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
+      return nil
+    }},
+    Command{Name: "unrelate", Callback: func(argv []string) error {
+      if len(argv) != 2 {
+        return errors.New("unrelate <concept id> <relation id>")
+      }
+      
+      // Find the concept that the relationship is being defined upon
+      concept := SelectConcept(argv[0])
+      if concept == nil {
+        return errors.New(fmt.Sprintf("No such concept found: %d", argv[0]))
+      }
+
+      // Find the relationship to modify on a concept
+      var relationIndex int = -1
+      for i, r := range concept.Relations {
+        if fmt.Sprintf("%d", r.Id) == argv[1] {
+          relationIndex = i
+          break
+        }
+      }
+      if relationIndex == -1 {
+        return errors.New(fmt.Sprintf("No such relation found in concept %d: %d", argv[0], argv[1]))
+      }
+
+      concept.Relations = append(
+        concept.Relations[:relationIndex],
+        concept.Relations[relationIndex+1:]...
+      )
+
+      fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
+      return nil
+    }},
+
+
+    Command{Name: "desc", Callback: func(argv []string) error {
+      phrase := strings.Join(argv, " ")
+      resultConcepts, err := Describe(phrase)
+      if err != nil {
+        return err
+      }
+
+      for _, concept := range resultConcepts {
+        fmt.Printf("%d) %s[%s]\n", concept.Id, concept.Name, concept.Type)
+        for _, relation := range concept.Relations {
+          fmt.Printf(" |-> %s of: ", relation.Kind)
+          for _, conceptId := range relation.Concepts {
+            for _, concept := range concepts {
+              if concept.Id == conceptId {
+                fmt.Printf("%s ", concept.Name)
+              }
+            }
+          }
+          fmt.Printf(" (id=%d)", relation.Id)
+        }
+        if len(concept.Relations) > 0 {
+          fmt.Println()
+        }
+      }
+
+      return nil
+    }},
+    Command{Name: "trainc", Callback: func(argv []string) error {
+      phrase := strings.Join(argv, " ")
+      err := TrainConcept(phrase, 5)
+      if err != nil {
+        return err
+      }
+      return nil
+    }},
+  }
 }
 
 func RunCommand(command string, argv []string) error {
@@ -429,11 +441,6 @@ func completer(d prompt.Document) []prompt.Suggest {
 }
 
 func main() {
-  err := TrainConcept("pickle")
-  fmt.Println(err)
-}
-
-func main1() {
   // On start, parse some flags to default actions
   var database = flag.String("db", "", "A path to a database file to READ on start.")
   flag.Parse()
